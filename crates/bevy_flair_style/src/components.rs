@@ -22,7 +22,7 @@ use bevy_asset::{AssetId, AssetServer, Handle, UntypedAssetId};
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
-use bevy_text::TextSpan;
+use bevy_text::{LineHeight, TextColor, TextFont, TextSpan};
 use bevy_ui::widget::Text;
 use bevy_ui::{Display, Node};
 use bevy_window::Window;
@@ -440,6 +440,20 @@ impl PseudoElementsSupport {
 
         let entity_ref = entities.get(entity).unwrap();
         if entity_ref.contains::<Text>() || entity_ref.contains::<TextSpan>() {
+            // The font properties are **inherited from the originating
+            // element**, as CSS says a pseudo-element's are: a `::before` is
+            // laid out as part of its host's text block, and bevy gives every
+            // `TextSpan` its own `TextFont` / `LineHeight` rather than reading
+            // the parent's. Defaulting them makes the span 20 px tall (bevy's
+            // default font size) inside a host asking for 11, which shows up
+            // not as a wrong glyph size but as a text block measured to the
+            // *span's* line — so a 14 px box with a `content` tick reports 20 px
+            // of content and overflows itself. A rule setting `font-size` on
+            // the pseudo-element still wins; this is only what it inherits when
+            // no rule says otherwise.
+            let font = entity_ref.get::<TextFont>().cloned().unwrap_or_default();
+            let line_height = entity_ref.get::<LineHeight>().copied().unwrap_or_default();
+            let color = entity_ref.get::<TextColor>().copied().unwrap_or_default();
             // `StyleData` for the same reason the block branch below spawns it:
             // `PseudoElement::on_insert` expects one, so without it inserting
             // `PseudoElementsSupport` on a text entity panics.
@@ -448,12 +462,18 @@ impl PseudoElementsSupport {
                 PseudoElement::Before,
                 StyleData::default(),
                 TextSpan::default(),
+                font.clone(),
+                line_height,
+                color,
             ));
             commands.spawn((
                 ChildOf(entity),
                 PseudoElement::After,
                 StyleData::default(),
                 TextSpan::default(),
+                font,
+                line_height,
+                color,
             ));
         } else if entity_ref.contains::<Node>() {
             commands.spawn((
