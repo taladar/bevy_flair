@@ -440,8 +440,21 @@ impl PseudoElementsSupport {
 
         let entity_ref = entities.get(entity).unwrap();
         if entity_ref.contains::<Text>() || entity_ref.contains::<TextSpan>() {
-            commands.spawn((ChildOf(entity), PseudoElement::Before, TextSpan::default()));
-            commands.spawn((ChildOf(entity), PseudoElement::After, TextSpan::default()));
+            // `StyleData` for the same reason the block branch below spawns it:
+            // `PseudoElement::on_insert` expects one, so without it inserting
+            // `PseudoElementsSupport` on a text entity panics.
+            commands.spawn((
+                ChildOf(entity),
+                PseudoElement::Before,
+                StyleData::default(),
+                TextSpan::default(),
+            ));
+            commands.spawn((
+                ChildOf(entity),
+                PseudoElement::After,
+                StyleData::default(),
+                TextSpan::default(),
+            ));
         } else if entity_ref.contains::<Node>() {
             commands.spawn((
                 ChildOf(entity),
