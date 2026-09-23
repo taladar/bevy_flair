@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `-bevy-image-box` sets `ImageNode::visual_box` (`content-box`, `padding-box`
+  or `border-box`), the one `ImageNode` field that had no property and so could
+  not be reached from CSS at all. It matters for any image used as a widget
+  *surface*: `ImageNode::default()` paints into the **content** box, so a
+  nine-sliced button skin brought in by `-bevy-image` is inset by the button's
+  own padding and border — a 112x32 button with `padding: 5px 10px` and a 2 px
+  border drew its art at 88x18, a frame hugging the label with bare panel
+  around it. `border-box` covers the whole widget.
+
 ### Fixed
 - `StyleMarkers::recalculate_style` now keeps a pending `Reset` instead of
   panicking in debug builds (or silently downgrading the reset to
