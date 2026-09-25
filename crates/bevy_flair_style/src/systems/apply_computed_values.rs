@@ -139,6 +139,11 @@ mod tests {
         pub right: f32,
     }
 
+    #[derive(Component, ComponentProperties, Reflect, Default)]
+    pub struct OtherComponent {
+        pub width: f32,
+    }
+
     fn simulate_calculate_style_and_compute_properties(mut query: Query<&mut StyleMarkers>) {
         for mut marker in &mut query {
             if !marker.needs_calculate_style() {
@@ -223,5 +228,82 @@ mod tests {
         assert_eq!(test_component_2.left, 500.0);
         // Right property has taken the default value
         assert_eq!(test_component_2.right, 0.0);
+    }
+
+    /// Restyling one property must flag only the component that property
+    /// belongs to. The mutable borrow flags a component changed whether or not
+    /// anything is written, so borrowing every styled component on a restyled
+    /// entity marked all of them changed — for `bevy_ui`, a `Node` and a
+    /// `TextFont` changed on every frame a `background-color` animates.
+    #[test]
+    fn test_restyling_one_component_leaves_the_others_unchanged() {
+        let mut world = World::new();
+        world.init_resource::<AppTypeRegistry>();
+        let mut property_registry = PropertyRegistry::new();
+        property_registry.register::<TestComponent>();
+        property_registry.register::<OtherComponent>();
+
+        let left_property = property_registry
+            .resolve(TestComponent::property_field_ref("left"))
+            .unwrap();
+
+        world.insert_resource(property_registry);
+        world.init_resource::<StaticPropertyMaps>();
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(
+            (
+                simulate_calculate_style_and_compute_properties,
+                apply_computed_properties,
+            )
+                .chain(),
+        );
+
+        let entity = world
+            .spawn((
+                StyleProperties::default(),
+                TestComponent {
+                    left: 10.0,
+                    right: 20.0,
+                },
+                OtherComponent { width: 5.0 },
+            ))
+            .id();
+
+        world.run_system_cached(reset_properties).unwrap();
+        {
+            let mut properties = world.entity_mut(entity).into_mut::<StyleProperties>().unwrap();
+            properties.pending_computed_values = properties.computed_values.clone();
+        }
+        schedule.run(&mut world);
+
+        // Only `left` changes; `OtherComponent` has no property in the change.
+        {
+            let mut properties = world.entity_mut(entity).into_mut::<StyleProperties>().unwrap();
+            properties.pending_computed_animation_values = properties.computed_values.clone();
+            properties.pending_computed_values = properties.computed_values.clone();
+            properties.pending_computed_values[left_property] = ReflectValue::Float(500.0).into();
+        }
+        let before = world.change_tick();
+        schedule.run(&mut world);
+
+        let test_changed = world
+            .entity(entity)
+            .get_ref::<TestComponent>()
+            .unwrap()
+            .last_changed();
+        let other_changed = world
+            .entity(entity)
+            .get_ref::<OtherComponent>()
+            .unwrap()
+            .last_changed();
+        assert!(
+            test_changed.is_newer_than(before, world.change_tick()),
+            "the restyled component is flagged changed"
+        );
+        assert!(
+            !other_changed.is_newer_than(before, world.change_tick()),
+            "a component with no restyled property must not be flagged changed"
+        );
     }
 }
