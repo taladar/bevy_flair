@@ -108,6 +108,20 @@ impl ComponentPropertiesRegistration {
             .world_scope(|world| world.trigger(ComponentAutoInserted { entity, type_id }))
     }
 
+    /// Whether `values` holds a value for any of this component's properties.
+    ///
+    /// Asked before borrowing the component mutably: the borrow flags the
+    /// component as changed whether or not anything is then written, so an
+    /// entity restyled for one property (an animated `background-color`)
+    /// used to mark *every* styled component on it changed — `Node`,
+    /// `TextFont`, `TextLayout` — which `bevy_ui` answers with a layout and a
+    /// text re-measure, on every frame the animation runs.
+    fn has_values_for(&self, values: &PropertyMap<ComputedValue>) -> bool {
+        map_range(self.registered_properties)
+            .into_iter()
+            .any(|id| matches!(values[ComponentPropertyId(id)], ComputedValue::Value(_)))
+    }
+
     fn internal_apply_values(
         &self,
         component: &mut dyn PartialReflect,
@@ -159,6 +173,10 @@ impl ComponentPropertiesRegistration {
             return Ok(());
         }
 
+        if !self.has_values_for(values) {
+            return Ok(());
+        }
+
         match (self.component_fns.reflect_mut)(world_entity_mut.into()) {
             Some(component) => {
                 self.internal_apply_values(component, property_registry, values)?;
@@ -202,6 +220,10 @@ impl ComponentPropertiesRegistration {
 
         if !self.component_fns.is_mutable {
             return self.apply_values_ref(entity_mut.reborrow(), property_registry, values, queue);
+        }
+
+        if !self.has_values_for(values) {
+            return Ok(());
         }
 
         match (self.component_fns.reflect_mut)(entity_mut) {
