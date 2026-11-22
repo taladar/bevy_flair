@@ -857,16 +857,16 @@ pub(crate) fn sync_em_size(
         {
             continue;
         }
-        debug_assert!(
-            !properties.computed_values.is_empty(),
-            "properties.computed_values should not be empty"
-        );
-
         let computed_values = if !properties.pending_computed_values.is_empty() {
             &properties.pending_computed_values
         } else {
             &properties.computed_values
         };
+        // A node spawned after this frame's style pass has a render target but
+        // no computed style yet. Its em size is set once it has been styled.
+        if computed_values.is_empty() {
+            continue;
+        }
         let ComputedValue::Value(v) = &computed_values[font_size_property] else {
             continue;
         };
